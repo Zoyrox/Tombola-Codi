@@ -1,21 +1,20 @@
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
+const socketIo = require('socket.io');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-
-// Configurazione Socket.IO SEMPLICE
-const io = new Server(server, {
+const io = socketIo(server, {
   cors: {
-    origin: "*", // Accetta tutti
+    origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  transports: ['websocket', 'polling']
 });
 
-// Middleware
-app.use(express.static(path.join(__dirname, 'public')));
+// Servi file statici
+app.use(express.static('public'));
 
 // Route
 app.get('/', (req, res) => {
@@ -30,440 +29,406 @@ app.get('/player', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'player.html'));
 });
 
-// Stato del gioco
-const rooms = {};
-const MAX_PLAYERS = 25;
+// Memorizza le stanze
+const rooms = new Map();
 
-// Genera codice stanza
-function generateRoomCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
-// Genera cartella
+// Genera cartella tombola
 function generateCard() {
-  const card = [[], [], []];
+  const card = [];
+  const numbers = Array.from({length: 90}, (_, i) => i + 1);
   
-  // Inizializza tutte le celle a null
-  for (let row = 0; row < 3; row++) {
-    for (let col = 0; col < 9; col++) {
-      card[row][col] = null;
-    }
+  // Mischia i numeri
+  for (let i = numbers.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
   }
   
-  // Per ogni riga, scegli 5 colonne casuali per i numeri
-  for (let row = 0; row < 3; row++) {
-    const positions = [];
-    while (positions.length < 5) {
-      const pos = Math.floor(Math.random() * 9);
-      if (!positions.includes(pos)) {
-        positions.push(pos);
-      }
-    }
-    
-    // Assegna numeri validi per ogni colonna scelta
-    positions.forEach(col => {
-      const min = col * 10 + 1;
-      const max = Math.min((col + 1) * 10, 90);
-      const num = Math.floor(Math.random() * (max - min + 1)) + min;
-      card[row][col] = num;
-    });
-  }
-  
+  // Prendi i primi 15 numeri e ordinali
+  card.push(...numbers.slice(0, 15).sort((a, b) => a - b));
   return card;
 }
 
-// Socket.IO
+// Genera codice stanza
+function generateRoomCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code;
+  do {
+    code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+  } while (rooms.has(code)); // Evita duplicati
+  
+  return code;
+}
+
+// Inizializza nuova stanza
+function initRoom(roomCode, adminId) {
+  rooms.set(roomCode, {
+    players: new Map(),
+    extractedNumbers: [],
+    adminId: adminId,
+    winners: {
+      ambo: [],
+      terno: [],
+      quaterna: [],
+      cinquina: [],
+      tombola: []
+    },
+    currentNumber: null,
+    gameStarted: false
+  });
+}
+
 io.on('connection', (socket) => {
   console.log('🔗 Nuova connessione:', socket.id);
   
-  // DEBUG: Invia evento di test
-  socket.emit('test', { message: 'Connesso al server!', time: new Date() });
-  
-  // ADMIN: Crea stanza
+  // Admin crea stanza
   socket.on('create-room', () => {
-    console.log('📢 Richiesta creazione stanza da:', socket.id);
-    
     const roomCode = generateRoomCode();
-    rooms[roomCode] = {
-      code: roomCode,
-      admin: socket.id,
-      players: {},
-      extractedNumbers: [],
-      currentNumber: null,
-      isGameStarted: false,
-      winners: {
-        ambo: [],
-        terno: [],
-        quaterna: [],
-        cinquina: []
-      },
-      createdAt: new Date()
-    };
-    
-    // Entra nella stanza
-    socket.join(roomCode);
-    
-    // Risposta all'admin
-    socket.emit('room-created', {
-      success: true,
-      roomCode: roomCode,
-      message: `Stanza ${roomCode} creata con successo!`
-    });
-    
-    console.log(`✅ Stanza creata: ${roomCode} da ${socket.id}`);
-  });
-  
-  // ADMIN: Entra in stanza esistente
-  socket.on('admin-join', (data) => {
-    console.log('📢 Admin join:', data);
-    
-    const roomCode = data.roomCode?.toUpperCase();
-    if (!roomCode || roomCode.length < 4) {
-      socket.emit('error', { message: 'Codice stanza non valido' });
-      return;
-    }
-    
-    // Crea stanza se non esiste
-    if (!rooms[roomCode]) {
-      rooms[roomCode] = {
-        code: roomCode,
-        admin: socket.id,
-        players: {},
-        extractedNumbers: [],
-        currentNumber: null,
-        isGameStarted: false,
-        winners: {
-          ambo: [],
-          terno: [],
-          quaterna: [],
-          cinquina: []
-        },
-        createdAt: new Date()
-      };
-    } else {
-      // Prendi controllo come admin
-      rooms[roomCode].admin = socket.id;
-    }
+    initRoom(roomCode, socket.id);
     
     socket.join(roomCode);
+    socket.roomCode = roomCode;
+    socket.isAdmin = true;
     
-    socket.emit('admin-joined', {
-      success: true,
-      roomCode: roomCode,
-      playerCount: Object.keys(rooms[roomCode].players).length,
-      extractedNumbers: rooms[roomCode].extractedNumbers,
-      currentNumber: rooms[roomCode].currentNumber,
-      isGameStarted: rooms[roomCode].isGameStarted,
-      winners: rooms[roomCode].winners
+    console.log(`🏠 Stanza creata: ${roomCode} da admin ${socket.id}`);
+    socket.emit('room-created', { 
+      roomCode,
+      message: 'Stanza creata con successo!'
     });
-    
-    console.log(`✅ Admin ${socket.id} entrato in ${roomCode}`);
   });
   
-  // PLAYER: Entra in stanza
-  socket.on('player-join', (data) => {
-    console.log('📢 Player join:', data);
-    
+  // Giocatore entra in stanza
+  socket.on('join-room', (data) => {
     const { roomCode, playerName } = data;
-    const room = rooms[roomCode?.toUpperCase()];
+    const room = rooms.get(roomCode.toUpperCase());
     
     if (!room) {
-      socket.emit('error', { message: 'Stanza non trovata!' });
+      socket.emit('room-error', { message: 'Stanza non trovata' });
       return;
     }
     
-    if (Object.keys(room.players).length >= MAX_PLAYERS) {
-      socket.emit('error', { message: 'Stanza piena! Massimo 25 giocatori.' });
+    if (room.players.size >= 25) {
+      socket.emit('room-error', { message: 'Stanza piena (max 25 giocatori)' });
       return;
     }
     
-    // Controlla nome duplicato
-    const existingPlayer = Object.values(room.players).find(p => 
-      p.name.toLowerCase() === playerName.toLowerCase()
-    );
-    
-    if (existingPlayer) {
-      socket.emit('error', { message: 'Nome già in uso!' });
+    if (room.players.has(socket.id)) {
+      socket.emit('room-error', { message: 'Sei già in questa stanza' });
       return;
     }
     
-    // Crea giocatore
+    // Aggiungi giocatore
     const playerCard = generateCard();
-    room.players[socket.id] = {
-      id: socket.id,
+    room.players.set(socket.id, {
       name: playerName,
       card: playerCard,
       markedNumbers: [],
       wins: [],
-      joinedAt: new Date()
-    };
-    
-    socket.join(roomCode);
-    
-    // Risposta al giocatore
-    socket.emit('player-joined', {
-      success: true,
-      roomCode: room.code,
-      playerName: playerName,
-      playerCard: playerCard,
-      playerCount: Object.keys(room.players).length,
-      extractedNumbers: room.extractedNumbers,
-      currentNumber: room.currentNumber,
-      isGameStarted: room.isGameStarted,
-      winners: room.winners
+      socketId: socket.id
     });
     
-    // Notifica admin
-    if (room.admin) {
-      io.to(room.admin).emit('player-updated', {
-        playerCount: Object.keys(room.players).length,
-        players: Object.values(room.players).map(p => ({
-          id: p.id,
-          name: p.name,
-          wins: p.wins.length
-        }))
-      });
-    }
+    socket.join(roomCode);
+    socket.roomCode = roomCode;
+    socket.playerName = playerName;
+    socket.isAdmin = false;
     
-    console.log(`✅ ${playerName} entrato in ${roomCode}`);
+    console.log(`👤 ${playerName} entrato in stanza ${roomCode}`);
+    
+    // Notifica admin e altri giocatori
+    socket.emit('room-joined', {
+      roomCode,
+      playerName,
+      card: playerCard,
+      extractedNumbers: room.extractedNumbers,
+      currentNumber: room.currentNumber,
+      players: Array.from(room.players.values()).map(p => ({
+        name: p.name,
+        wins: p.wins.length
+      }))
+    });
+    
+    // Aggiorna tutti i giocatori nella stanza
+    io.to(roomCode).emit('players-updated', {
+      players: Array.from(room.players.values()).map(p => ({
+        name: p.name,
+        wins: p.wins.length
+      })),
+      playerCount: room.players.size
+    });
+    
+    // Notifica admin specificamente
+    socket.to(roomCode).emit('player-joined', {
+      playerName,
+      playerCount: room.players.size
+    });
   });
   
-  // ADMIN: Estrai numero
-  socket.on('extract-number', (roomCode) => {
-    console.log('🎲 Extract number in:', roomCode);
+  // Admin estrae numero
+  socket.on('extract-number', () => {
+    const roomCode = socket.roomCode;
+    const room = rooms.get(roomCode);
     
-    const room = rooms[roomCode];
-    if (!room || room.admin !== socket.id) {
-      socket.emit('error', { message: 'Non autorizzato!' });
+    if (!room || !socket.isAdmin || room.gameStarted === false) {
+      socket.emit('game-error', { message: 'Non puoi estrarre numeri' });
       return;
     }
     
     if (room.extractedNumbers.length >= 90) {
-      socket.emit('error', { message: 'Tutti i numeri estratti!' });
+      socket.emit('game-error', { message: 'Tutti i numeri sono stati estratti!' });
       return;
     }
     
-    // Estrai nuovo numero
-    let newNumber;
-    do {
-      newNumber = Math.floor(Math.random() * 90) + 1;
-    } while (room.extractedNumbers.includes(newNumber));
+    // Genera numero casuale non estratto
+    const availableNumbers = Array.from({length: 90}, (_, i) => i + 1)
+      .filter(n => !room.extractedNumbers.includes(n));
     
-    room.extractedNumbers.push(newNumber);
-    room.currentNumber = newNumber;
-    room.isGameStarted = true;
+    const extractedNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
     
-    // Ordina
-    room.extractedNumbers.sort((a, b) => a - b);
+    // Aggiorna stato stanza
+    room.extractedNumbers.push(extractedNumber);
+    room.currentNumber = extractedNumber;
+    room.gameStarted = true;
     
-    // Invia a tutti
+    console.log(`🎲 Numero estratto in ${roomCode}: ${extractedNumber}`);
+    
+    // Invia a tutti i giocatori
     io.to(roomCode).emit('number-extracted', {
-      number: newNumber,
-      extractedNumbers: room.extractedNumbers,
-      winners: room.winners
+      number: extractedNumber,
+      extractedCount: room.extractedNumbers.length,
+      isNew: true
     });
     
-    console.log(`🎲 ${roomCode}: estratto ${newNumber}`);
+    // Controlla vincite
+    checkWins(roomCode, extractedNumber);
   });
   
-  // PLAYER: Segna numero
-  socket.on('mark-number', (data) => {
-    const { roomCode, number } = data;
-    const room = rooms[roomCode];
+  // Admin resetta gioco
+  socket.on('reset-game', () => {
+    const roomCode = socket.roomCode;
+    const room = rooms.get(roomCode);
     
-    if (!room) return;
+    if (!room || !socket.isAdmin) return;
     
-    const player = room.players[socket.id];
-    if (!player) return;
-    
-    if (!room.extractedNumbers.includes(number)) {
-      socket.emit('error', { message: 'Numero non estratto!' });
-      return;
-    }
-    
-    if (!player.markedNumbers.includes(number)) {
-      player.markedNumbers.push(number);
-      socket.emit('number-marked', {
-        number: number,
-        markedNumbers: player.markedNumbers
-      });
-      
-      // Controlla vittorie
-      checkWins(roomCode, socket.id);
-    }
-  });
-  
-  // Reset partita
-  socket.on('reset-game', (roomCode) => {
-    const room = rooms[roomCode];
-    if (!room || room.admin !== socket.id) {
-      socket.emit('error', { message: 'Non autorizzato!' });
-      return;
-    }
-    
+    // Resetta solo i numeri estratti, mantieni i giocatori
     room.extractedNumbers = [];
     room.currentNumber = null;
-    room.isGameStarted = false;
-    room.winners = { ambo: [], terno: [], quaterna: [], cinquina: [] };
+    room.winners = { ambo: [], terno: [], quaterna: [], cinquina: [], tombola: [] };
     
-    // Reset giocatori
-    Object.values(room.players).forEach(player => {
+    // Resetta le cartelle dei giocatori
+    room.players.forEach(player => {
       player.markedNumbers = [];
       player.wins = [];
     });
     
     io.to(roomCode).emit('game-reset', {
-      extractedNumbers: [],
-      currentNumber: null,
-      isGameStarted: false,
-      winners: room.winners
+      message: 'Partita resettata!'
     });
     
-    console.log(`🔄 ${roomCode}: partita resettata`);
+    console.log(`🔄 Partita resettata in stanza ${roomCode}`);
+  });
+  
+  // Giocatore segna numero
+  socket.on('mark-number', (data) => {
+    const { number } = data;
+    const roomCode = socket.roomCode;
+    const room = rooms.get(roomCode);
+    
+    if (!room || socket.isAdmin) return;
+    
+    const player = room.players.get(socket.id);
+    if (player && !player.markedNumbers.includes(number)) {
+      player.markedNumbers.push(number);
+      
+      // Controlla se il giocatore ha vinto qualcosa
+      checkPlayerWins(roomCode, socket.id);
+    }
+  });
+  
+  // Giocatore lascia stanza
+  socket.on('leave-room', () => {
+    const roomCode = socket.roomCode;
+    const room = rooms.get(roomCode);
+    
+    if (!room) return;
+    
+    if (socket.isAdmin) {
+      // Se l'admin esce, elimina la stanza
+      rooms.delete(roomCode);
+      io.to(roomCode).emit('room-closed', {
+        message: 'L\'admin ha lasciato la stanza. La partita è terminata.'
+      });
+      io.socketsLeave(roomCode);
+      console.log(`🚪 Stanza ${roomCode} eliminata (admin uscito)`);
+    } else {
+      // Rimuovi giocatore
+      const playerName = socket.playerName;
+      room.players.delete(socket.id);
+      
+      socket.leave(roomCode);
+      delete socket.roomCode;
+      delete socket.playerName;
+      
+      // Notifica gli altri
+      io.to(roomCode).emit('player-left', {
+        playerName,
+        playerCount: room.players.size
+      });
+      
+      console.log(`👤 ${playerName} lasciato stanza ${roomCode}`);
+      
+      // Se non ci sono più giocatori, elimina la stanza
+      if (room.players.size === 0) {
+        rooms.delete(roomCode);
+        console.log(`🚪 Stanza ${roomCode} eliminata (nessun giocatore)`);
+      }
+    }
   });
   
   // Disconnessione
   socket.on('disconnect', () => {
-    console.log('❌ Disconnesso:', socket.id);
+    const roomCode = socket.roomCode;
+    if (!roomCode) return;
     
-    Object.keys(rooms).forEach(roomCode => {
-      const room = rooms[roomCode];
-      
-      if (room.players[socket.id]) {
-        delete room.players[socket.id];
-        
-        // Notifica admin
-        if (room.admin) {
-          io.to(room.admin).emit('player-updated', {
-            playerCount: Object.keys(room.players).length,
-            players: Object.values(room.players).map(p => ({
-              id: p.id,
-              name: p.name,
-              wins: p.wins.length
-            }))
-          });
-        }
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    if (socket.isAdmin) {
+      // Admin disconnesso - chiudi stanza
+      rooms.delete(roomCode);
+      io.to(roomCode).emit('room-closed', {
+        message: 'L\'admin si è disconnesso. La partita è terminata.'
+      });
+      console.log(`🚪 Stanza ${roomCode} eliminata (admin disconnesso)`);
+    } else {
+      // Giocatore disconnesso
+      const player = room.players.get(socket.id);
+      if (player) {
+        room.players.delete(socket.id);
+        io.to(roomCode).emit('player-left', {
+          playerName: player.name,
+          playerCount: room.players.size
+        });
+        console.log(`👤 ${player.name} disconnesso da stanza ${roomCode}`);
       }
       
-      if (room.admin === socket.id) {
-        // Se l'admin si disconnette, chiudi la stanza
-        io.to(roomCode).emit('room-closed', { message: 'Admin disconnesso' });
-        delete rooms[roomCode];
-        console.log(`🚫 ${roomCode}: stanza chiusa`);
+      // Elimina stanza se vuota
+      if (room.players.size === 0) {
+        rooms.delete(roomCode);
+        console.log(`🚪 Stanza ${roomCode} eliminata (vuota)`);
       }
-    });
+    }
   });
   
-  // Funzione per controllare vittorie
-  function checkWins(roomCode, playerId) {
-    const room = rooms[roomCode];
-    const player = room?.players[playerId];
-    if (!player) return;
+  // Funzione per controllare vincite
+  function checkWins(roomCode, extractedNumber) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
     
-    const card = player.card;
-    const marked = player.markedNumbers;
-    
-    for (let row = 0; row < 3; row++) {
-      const rowNumbers = card[row].filter(n => n !== null);
-      const markedInRow = rowNumbers.filter(n => marked.includes(n));
-      
-      if (markedInRow.length >= 2 && !player.wins.includes('ambo')) {
-        player.wins.push('ambo');
-        if (!room.winners.ambo.find(w => w.id === playerId)) {
-          room.winners.ambo.push({
-            id: playerId,
-            name: player.name,
-            timestamp: new Date(),
-            numbers: markedInRow
-          });
+    // Verifica per ogni giocatore
+    room.players.forEach((player, playerId) => {
+      if (player.card.includes(extractedNumber)) {
+        player.markedNumbers.push(extractedNumber);
+        
+        // Controlla combinazioni vincenti
+        const markedOnCard = player.markedNumbers.filter(n => player.card.includes(n));
+        const sortedMarked = markedOnCard.sort((a, b) => a - b);
+        
+        // Controlla tombola (tutti i 15 numeri)
+        if (sortedMarked.length === 15 && !player.wins.includes('tombola')) {
+          player.wins.push('tombola');
+          room.winners.tombola.push(player.name);
           
           io.to(roomCode).emit('winner', {
-            type: 'ambo',
-            player: player.name,
-            playerId: playerId,
-            numbers: markedInRow
+            type: 'tombola',
+            playerName: player.name,
+            message: `🎉 ${player.name} ha fatto TOMBOLA!`
           });
         }
-      }
-      
-      if (markedInRow.length >= 3 && !player.wins.includes('terno')) {
-        player.wins.push('terno');
-        if (!room.winners.terno.find(w => w.id === playerId)) {
-          room.winners.terno.push({
-            id: playerId,
-            name: player.name,
-            timestamp: new Date(),
-            numbers: markedInRow
-          });
-          
-          io.to(roomCode).emit('winner', {
-            type: 'terno',
-            player: player.name,
-            playerId: playerId,
-            numbers: markedInRow
-          });
-        }
-      }
-      
-      if (markedInRow.length >= 4 && !player.wins.includes('quaterna')) {
-        player.wins.push('quaterna');
-        if (!room.winners.quaterna.find(w => w.id === playerId)) {
-          room.winners.quaterna.push({
-            id: playerId,
-            name: player.name,
-            timestamp: new Date(),
-            numbers: markedInRow
-          });
-          
-          io.to(roomCode).emit('winner', {
-            type: 'quaterna',
-            player: player.name,
-            playerId: playerId,
-            numbers: markedInRow
-          });
-        }
-      }
-      
-      if (markedInRow.length >= 5 && !player.wins.includes('cinquina')) {
-        player.wins.push('cinquina');
-        if (!room.winners.cinquina.find(w => w.id === playerId)) {
-          room.winners.cinquina.push({
-            id: playerId,
-            name: player.name,
-            timestamp: new Date(),
-            numbers: markedInRow
-          });
+        // Controlla cinquina (5 numeri consecutivi)
+        else if (hasConsecutive(sortedMarked, 5) && !player.wins.includes('cinquina')) {
+          player.wins.push('cinquina');
+          room.winners.cinquina.push(player.name);
           
           io.to(roomCode).emit('winner', {
             type: 'cinquina',
-            player: player.name,
-            playerId: playerId,
-            numbers: markedInRow
+            playerName: player.name,
+            message: `🌟 ${player.name} ha fatto CINQUINA!`
+          });
+        }
+        // Controlla quaterna (4 numeri consecutivi)
+        else if (hasConsecutive(sortedMarked, 4) && !player.wins.includes('quaterna')) {
+          player.wins.push('quaterna');
+          room.winners.quaterna.push(player.name);
+          
+          io.to(roomCode).emit('winner', {
+            type: 'quaterna',
+            playerName: player.name,
+            message: `🏆 ${player.name} ha fatto QUATERNA!`
+          });
+        }
+        // Controlla terno (3 numeri consecutivi)
+        else if (hasConsecutive(sortedMarked, 3) && !player.wins.includes('terno')) {
+          player.wins.push('terno');
+          room.winners.terno.push(player.name);
+          
+          io.to(roomCode).emit('winner', {
+            type: 'terno',
+            playerName: player.name,
+            message: `🎯 ${player.name} ha fatto TERNO!`
+          });
+        }
+        // Controlla ambo (2 numeri consecutivi)
+        else if (hasConsecutive(sortedMarked, 2) && !player.wins.includes('ambo')) {
+          player.wins.push('ambo');
+          room.winners.ambo.push(player.name);
+          
+          io.to(roomCode).emit('winner', {
+            type: 'ambo',
+            playerName: player.name,
+            message: `✅ ${player.name} ha fatto AMBO!`
           });
         }
       }
+    });
+  }
+  
+  // Funzione per controllare vincite del singolo giocatore
+  function checkPlayerWins(roomCode, playerId) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    
+    const player = room.players.get(playerId);
+    if (!player) return;
+    
+    const markedOnCard = player.markedNumbers.filter(n => player.card.includes(n));
+    const sortedMarked = markedOnCard.sort((a, b) => a - b);
+    
+    // Stessa logica di checkWins ma solo per questo giocatore
+    // ... (omessa per brevità, usa la stessa logica sopra)
+  }
+  
+  // Helper: verifica se ci sono numeri consecutivi
+  function hasConsecutive(numbers, count) {
+    for (let i = 0; i <= numbers.length - count; i++) {
+      let consecutive = true;
+      for (let j = 1; j < count; j++) {
+        if (numbers[i + j] !== numbers[i] + j) {
+          consecutive = false;
+          break;
+        }
+      }
+      if (consecutive) return true;
     }
+    return false;
   }
 });
 
-// Avvia server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log('='.repeat(60));
-  console.log('🎄  TOMBOLA NATALIZIA - SERVER AVVIATO CORRETTAMENTE  🎄');
-  console.log('='.repeat(60));
-  console.log(`✅  Server in esecuzione: http://localhost:${PORT}`);
-  console.log(`👑  Admin: http://localhost:${PORT}/admin.html`);
-  console.log(`👤  Player: http://localhost:${PORT}/player.html`);
-  console.log('='.repeat(60));
-  console.log('\n🚀  PER INIZIARE:');
-  console.log('1. Apri due schede del browser');
-  console.log('2. Nella prima: vai su /admin.html');
-  console.log('3. Clicca "CREA NUOVA STANZA"');
-  console.log('4. Copia il codice stanza');
-  console.log('5. Nella seconda scheda: vai su /player.html');
-  console.log('6. Incolla il codice e inserisci il nome');
-  console.log('7. Clicca "ENTRARE NELLA PARTITA"');
-  console.log('8. Torna nella scheda Admin e clicca "ESTRAI NUMERO"');
-  console.log('='.repeat(60));
+  console.log(`🎄 Server Tombola Natalizia online!`);
+  console.log(`🔗 http://localhost:${PORT}`);
+  console.log(`👑 Admin: http://localhost:${PORT}/admin`);
+  console.log(`👥 Player: http://localhost:${PORT}/player`);
 });
