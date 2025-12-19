@@ -1,0 +1,175 @@
+/* RESET & BASE */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+    color: white;
+    min-height: 100vh;
+    padding: 20px;
+    /* Percorso relativo per un'immagine di sfondo opzionale */
+    /* background-image: url('./assets/christmas-bg.jpg'); */
+    background-size: cover;
+    background-attachment: fixed;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* HOME PAGE */
+.home h1 {
+    text-align: center;
+    font-family: 'Mountains of Christmas', cursive;
+    font-size: 3em;
+    color: #FFD700;
+    margin-bottom: 40px;
+    text-shadow: 3px 3px 5px rgba(0,0,0,0.5);
+}
+
+.card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    padding: 30px;
+    margin-bottom: 30px;
+    border: 2px solid rgba(255, 215, 0, 0.3);
+    transition: transform 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.card h2 {
+    color: #4ECDC4;
+    margin-bottom: 15px;
+    font-size: 1.8em;
+}
+
+/* INPUT & BUTTONS */
+input {
+    width: 100%;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 10px;
+    border: none;
+    font-size: 1.1em;
+    background: rgba(255,255,255,0.9);
+}
+
+button {
+    padding: 15px 30px;
+    font-size: 1.1em;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s;
+    margin: 10px 5px;
+}
+
+.btn-admin {
+    background: linear-gradient(45deg, #FF416C, #FF4B2B);
+    color: white;
+}
+
+.btn-join {
+    background: linear-gradient(45deg, #2193b0, #6dd5ed);
+    color: white;
+}
+
+.btn-extract {
+    background: linear-gradient(45deg, #00b09b, #96c93d);
+    color: white;
+    font-size: 1.5em;
+    padding: 20px 40px;
+}
+
+/* TABELLONE */
+.board {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 8px;
+    margin-top: 20px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 15px;
+}
+
+.number-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 1.2em;
+    background: rgba(255, 255, 255, 0.1);
+    transition: all 0.3s;
+}
+
+.number-cell.extracted {
+    background: #FFD700;
+    color: #000;
+    transform: scale(1.1);
+    box-shadow: 0 0 15px #FFD700;
+}
+
+/* MODAL */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: rgba(255,255,255,0.1);
+    padding: 40px;
+    border-radius: 20px;
+    text-align: center;
+    backdrop-filter: blur(20px);
+}
+
+.spinner {
+    border: 5px solid rgba(255,255,255,0.3);
+    border-top: 5px solid #FFD700;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .board {
+        grid-template-columns: repeat(5, 1fr);
+    }
+    
+    .home h1 {
+        font-size: 2em;
+    }
+}

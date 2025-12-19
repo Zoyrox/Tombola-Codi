@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Tombola</title>
+    <!-- Stesso CSS della homepage -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="./assets/favicon.ico" type="image/x-icon">
+</head>
+<body>
+    <div class="container admin-container">
+        <header>
+            <h1>👑 PANNELLO ADMIN - TOMBOLA</h1>
+            <div class="room-info">
+                <p>Stanza: <strong id="roomCode">XXXXXX</strong></p>
+                <p>Giocatori: <span id="playerCount">0</span></p>
+                <button onclick="copyRoomLink()" class="btn-small">📋 Copia Invito</button>
+            </div>
+        </header>
+
+        <div class="admin-controls">
+            <div class="control-card">
+                <h3>🎲 Estrazione Numeri</h3>
+                <button id="extractBtn" class="btn-extract">Estrai Numero</button>
+                <div class="extracted-number">
+                    <h2>Ultimo estratto: <span id="lastNumber">--</span></h2>
+                </div>
+                <button id="resetBtn" class="btn-reset">🔄 Reset Partita</button>
+            </div>
+
+            <div class="control-card">
+                <h3>📊 Numeri Estratti</h3>
+                <div id="extractedNumbers" class="numbers-grid"></div>
+            </div>
+
+            <div class="control-card">
+                <h3>👥 Giocatori Connessi</h3>
+                <div id="playersList"></div>
+            </div>
+        </div>
+
+        <div class="game-board-admin">
+            <h3>🃏 Tabellone Tombola (90 numeri)</h3>
+            <div id="board" class="board"></div>
+        </div>
+    </div>
+
+    <!-- Socket.io CDN e file JS locale -->
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <!-- PERCORSO RELATIVO: admin.js è nella stessa cartella -->
+    <script src="admin.js"></script>
+</body>
+</html>

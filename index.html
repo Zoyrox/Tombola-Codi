@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tombola Multiplayer 🎄</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap" rel="stylesheet">
+    <link rel="icon" href="./assets/favicon.ico" type="image/x-icon">
+</head>
+<body>
+    <div class="container home">
+        <h1>🎅 TOMBOLA NATALIZIA MULTIPLAYER 🎄</h1>
+        
+        <div class="card">
+            <h2>🏁 Crea una Partita (Admin)</h2>
+            <p>Crea una nuova stanza e invita gli amici</p>
+            <button id="createRoomBtn" class="btn-admin">Crea Partita</button>
+            <div id="roomInfo" class="hidden">
+                <p>🔑 Codice Stanza: <span id="roomCode">XXXX</span></p>
+                <p>📋 Link per invitare: <input type="text" id="inviteLink" readonly></p>
+                <button onclick="copyLink()" class="btn-copy">Copia Link</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🎮 Unisciti a Partita (Giocatore)</h2>
+            <input type="text" id="joinCode" placeholder="Inserisci codice stanza" maxlength="6">
+            <button id="joinRoomBtn" class="btn-join">Unisciti</button>
+            <div id="playerNameInput" class="hidden">
+                <input type="text" id="playerName" placeholder="Il tuo nome">
+                <button id="startPlayingBtn">Entra in Gioco</button>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <h3>🎯 Come funziona:</h3>
+            <p>1. L'ADMIN crea la stanza e condivide il codice</p>
+            <p>2. I GIOCATORI inseriscono il codice</p>
+            <p>3. Tutti vedono gli stessi numeri in tempo reale!</p>
+        </div>
+    </div>
+
+    <div id="loadingModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="spinner"></div>
+            <p>Connessione in corso...</p>
+        </div>
+    </div>
+
+    <!-- Socket.io CDN -->
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <!-- Usa percorso relativo per il file locale JS -->
+    <script src="script.js"></script>
+</body>
+</html>

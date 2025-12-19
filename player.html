@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tombola - Giocatore</title>
+    <!-- Stesso CSS con percorso relativo -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="./assets/favicon.ico" type="image/x-icon">
+</head>
+<body>
+    <div class="container player-container">
+        <header>
+            <h1>🎮 TOMBOLA - Giocatore: <span id="playerName">Tu</span></h1>
+            <div class="player-info">
+                <p>Stanza: <strong id="roomCode">XXXXXX</strong></p>
+                <p>Numeri estratti: <span id="extractedCount">0</span>/90</p>
+            </div>
+        </header>
+
+        <div class="player-game">
+            <div class="current-number">
+                <h2>🎯 Numero Corrente: <span id="currentNumber">--</span></h2>
+            </div>
+
+            <div class="player-cards">
+                <h3>🎴 Le tue Cartelle (3)</h3>
+                <div id="playerCards" class="cards-container"></div>
+            </div>
+
+            <div class="controls">
+                <button id="tombolaBtn" class="btn-tombola">🔔 CHIAMA TOMBOLA!</button>
+                <button id="amicoBtn" class="btn-amico">🎯 CHIAMA AMBO!</button>
+            </div>
+        </div>
+
+        <div class="game-board">
+            <h3>📊 Tabellone Numeri Estratti</h3>
+            <div id="board" class="board"></div>
+        </div>
+    </div>
+
+    <!-- Socket.io CDN e file JS locale -->
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <!-- PERCORSO RELATIVO: player.js è nella stessa cartella -->
+    <script src="player.js"></script>
+</body>
+</html>
